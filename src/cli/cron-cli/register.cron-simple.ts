@@ -1,8 +1,15 @@
 import type { Command } from "commander";
 import { danger } from "../../globals.js";
 import { defaultRuntime } from "../../runtime.js";
-import { addGatewayClientOptions, callGatewayFromCli } from "../gateway-rpc.js";
+import {
+  addGatewayClientOptions,
+  callGatewayFromCli,
+  type GatewayRpcOpts,
+} from "../gateway-rpc.js";
 import { warnIfCronSchedulerDisabled } from "./shared.js";
+
+/** cron.run waits for full job execution which can take minutes; 5 min default. */
+const CRON_RUN_DEFAULT_TIMEOUT_MS = 300_000;
 
 function registerCronToggleCommand(params: {
   cron: Command;
@@ -93,13 +100,22 @@ export function registerCronSimpleCommands(cron: Command) {
       .description("Run a cron job now (debug)")
       .argument("<id>", "Job id")
       .option("--due", "Run only when due (default behavior in older versions)", false)
-      .action(async (id, opts) => {
+      .action(async (id, opts, command) => {
         try {
-          const res = await callGatewayFromCli("cron.run", opts, {
+          // cron.run waits for full job execution which can take minutes.
+          // Override the default 30 s timeout unless the user set --timeout.
+          const isDefaultTimeout = command.getOptionValueSource("timeout") === "default";
+          const runOpts: GatewayRpcOpts = isDefaultTimeout
+            ? { ...opts, timeout: String(CRON_RUN_DEFAULT_TIMEOUT_MS) }
+            : opts;
+          const res = (await callGatewayFromCli("cron.run", runOpts, {
             id,
             mode: opts.due ? "due" : "force",
-          });
+          })) as { ok?: boolean; ran?: boolean };
           defaultRuntime.log(JSON.stringify(res, null, 2));
+          if (res.ok === false) {
+            defaultRuntime.exit(1);
+          }
         } catch (err) {
           defaultRuntime.error(danger(String(err)));
           defaultRuntime.exit(1);

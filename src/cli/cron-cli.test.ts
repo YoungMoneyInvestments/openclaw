@@ -504,4 +504,32 @@ describe("cron cli", () => {
   it("rejects --exact on edit when existing job is not cron", async () => {
     await expectCronEditWithScheduleLookupExit({ kind: "every", everyMs: 60_000 }, ["--exact"]);
   });
+
+  it("cron run exits 0 on success", async () => {
+    await runCronCommand(["cron", "run", "job-1"]);
+    // No throw = exit 0; defaultRuntime.exit(1) throws in tests
+  });
+
+  it("cron run exits 1 when gateway returns ok:false", async () => {
+    resetGatewayMock();
+    callGatewayFromCli.mockImplementation(
+      async (method: string, _opts: unknown, params?: unknown) => {
+        if (method === "cron.run") {
+          return { ok: false, params };
+        }
+        return { ok: true, params };
+      },
+    );
+    const program = buildProgram();
+    await expect(program.parseAsync(["cron", "run", "job-1"], { from: "user" })).rejects.toThrow(
+      "__exit__:1",
+    );
+  });
+
+  it("cron run uses extended timeout by default", async () => {
+    await runCronCommand(["cron", "run", "job-1"]);
+    const runCall = callGatewayFromCli.mock.calls.find((call) => call[0] === "cron.run");
+    const opts = runCall?.[1] as { timeout?: string } | undefined;
+    expect(Number(opts?.timeout)).toBe(300_000);
+  });
 });
