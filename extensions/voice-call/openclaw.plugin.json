@@ -605,6 +605,10 @@
       "responseTimeoutMs": {
         "type": "integer",
         "minimum": 1
+      },
+      "staleCallReaperSeconds": {
+        "type": "integer",
+        "minimum": 0
       }
     }
   }
