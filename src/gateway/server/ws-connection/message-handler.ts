@@ -342,6 +342,10 @@ export function attachGatewayWsMessageHandler(params: {
 
         const frame = parsed;
         const connectParams = frame.params as ConnectParams;
+        // The idle-handshake timeout is only meant to kill sockets that never present
+        // a valid connect frame. Once connect validation passes, auth/pairing work may
+        // legitimately take longer than the pre-auth timeout under load.
+        clearHandshakeTimer();
         const clientLabel = connectParams.client.displayName ?? connectParams.client.id;
         const clientMeta = {
           client: connectParams.client.id,

@@ -15,13 +15,15 @@ let lastClientOptions: {
   tlsFingerprint?: string;
   scopes?: string[];
   onHelloOk?: (hello: { features?: { methods?: string[] } }) => void | Promise<void>;
+  onConnectError?: (err: Error) => void;
   onClose?: (code: number, reason: string) => void;
 } | null = null;
-type StartMode = "hello" | "close" | "silent";
+type StartMode = "hello" | "close" | "connect-error" | "silent";
 let startMode: StartMode = "hello";
 let closeCode = 1006;
 let closeReason = "";
 let helloMethods: string[] | undefined = ["health", "secrets.resolve"];
+let connectErrorMessage = "connect failed";
 
 vi.mock("./client.js", () => ({
   describeGatewayCloseCode: (code: number) => {
@@ -40,6 +42,7 @@ vi.mock("./client.js", () => ({
       password?: string;
       scopes?: string[];
       onHelloOk?: (hello: { features?: { methods?: string[] } }) => void | Promise<void>;
+      onConnectError?: (err: Error) => void;
       onClose?: (code: number, reason: string) => void;
     }) {
       lastClientOptions = opts;
@@ -56,6 +59,8 @@ vi.mock("./client.js", () => ({
         });
       } else if (startMode === "close") {
         lastClientOptions?.onClose?.(closeCode, closeReason);
+      } else if (startMode === "connect-error") {
+        lastClientOptions?.onConnectError?.(new Error(connectErrorMessage));
       }
     }
     stop() {}
@@ -75,6 +80,7 @@ function resetGatewayCallMocks() {
   closeCode = 1006;
   closeReason = "";
   helloMethods = ["health", "secrets.resolve"];
+  connectErrorMessage = "connect failed";
 }
 
 function setGatewayNetworkDefaults(port = 18789) {
@@ -520,6 +526,14 @@ describe("callGateway error details", () => {
     expect(err?.message).toContain("Gateway target: ws://127.0.0.1:18789");
     expect(err?.message).toContain("Source: local loopback");
     expect(err?.message).toContain("Bind: loopback");
+  });
+
+  it("surfaces the original connect error instead of masking it as a normal close", async () => {
+    startMode = "connect-error";
+    connectErrorMessage = "pairing required";
+    setLocalLoopbackGatewayConfig();
+
+    await expect(callGateway({ method: "health" })).rejects.toThrow("pairing required");
   });
 
   it("includes connection details on timeout", async () => {

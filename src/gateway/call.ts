@@ -840,6 +840,14 @@ async function executeGatewayRequestWithScopes<T>(params: {
           stop(err as Error);
         }
       },
+      onConnectError: (err) => {
+        if (settled || ignoreClose) {
+          return;
+        }
+        ignoreClose = true;
+        client.stop();
+        stop(err instanceof Error ? err : new Error(String(err)));
+      },
       onClose: (code, reason) => {
         if (settled || ignoreClose) {
           return;

@@ -21,7 +21,11 @@ export const __setMaxChatHistoryMessagesBytesForTest = (value?: number) => {
     maxChatHistoryMessagesBytes = value;
   }
 };
-export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 3_000;
+// Local CLI/bootstrap paths can legitimately spend a few seconds before they
+// answer the connect challenge on busy hosts. Keep the idle unauthenticated
+// socket budget bounded, but high enough that real operator clients do not
+// flap under normal startup load.
+export const DEFAULT_HANDSHAKE_TIMEOUT_MS = 10_000;
 export const getHandshakeTimeoutMs = () => {
   if (process.env.VITEST && process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS) {
     const parsed = Number(process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS);

@@ -22,6 +22,7 @@ import {
   waitForWsClose,
   withRuntimeVersionEnv,
 } from "./server.auth.shared.js";
+import * as authContext from "./server/ws-connection/auth-context.js";
 
 export function registerDefaultAuthTokenSuite(): void {
   describe("default auth (token)", () => {
@@ -85,6 +86,33 @@ export function registerDefaultAuthTokenSuite(): void {
         const closed = await waitForWsClose(ws, handshakeTimeoutMs + 500);
         expect(closed).toBe(true);
       } finally {
+        if (prevHandshakeTimeout === undefined) {
+          delete process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS;
+        } else {
+          process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS = prevHandshakeTimeout;
+        }
+      }
+    });
+
+    test("does not time out a valid connect while auth work is still in progress", async () => {
+      vi.useRealTimers();
+      const prevHandshakeTimeout = process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS;
+      process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS = "20";
+      const originalResolveConnectAuthDecision = authContext.resolveConnectAuthDecision;
+      const authDelayMs = 60;
+      const resolveConnectAuthDecisionSpy = vi
+        .spyOn(authContext, "resolveConnectAuthDecision")
+        .mockImplementation(async (...args) => {
+          await new Promise((resolve) => setTimeout(resolve, authDelayMs));
+          return await originalResolveConnectAuthDecision(...args);
+        });
+      try {
+        const ws = await openWs(port);
+        const res = await connectReq(ws);
+        expect(res.ok).toBe(true);
+        ws.close();
+      } finally {
+        resolveConnectAuthDecisionSpy.mockRestore();
         if (prevHandshakeTimeout === undefined) {
           delete process.env.OPENCLAW_TEST_HANDSHAKE_TIMEOUT_MS;
         } else {
