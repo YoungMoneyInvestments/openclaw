@@ -21,7 +21,12 @@ import {
   resolveJobPayloadTextForMain,
 } from "./jobs.js";
 import { locked } from "./locked.js";
-import type { CronEvent, CronServiceState } from "./state.js";
+import {
+  clearActiveRun,
+  createActiveRunController,
+  type CronEvent,
+  type CronServiceState,
+} from "./state.js";
 import { ensureLoaded, persist } from "./store.js";
 import { DEFAULT_JOB_TIMEOUT_MS, resolveCronJobTimeoutMs } from "./timeout-policy.js";
 
@@ -55,6 +60,7 @@ type TimedCronRunOutcome = CronRunOutcome &
 type StartupCatchupCandidate = {
   jobId: string;
   job: CronJob;
+  runAbortController: AbortController;
 };
 
 type StartupCatchupPlan = {
@@ -65,13 +71,26 @@ type StartupCatchupPlan = {
 export async function executeJobCoreWithTimeout(
   state: CronServiceState,
   job: CronJob,
+  abortSignal?: AbortSignal,
 ): Promise<Awaited<ReturnType<typeof executeJobCore>>> {
   const jobTimeoutMs = resolveCronJobTimeoutMs(job);
   if (typeof jobTimeoutMs !== "number") {
-    return await executeJobCore(state, job);
+    return await executeJobCore(state, job, abortSignal);
   }
 
   const runAbortController = new AbortController();
+  const relayAbort = () => {
+    const reason =
+      typeof abortSignal?.reason === "string" && abortSignal.reason.trim()
+        ? abortSignal.reason
+        : "cron: job aborted";
+    runAbortController.abort(reason);
+  };
+  if (abortSignal?.aborted) {
+    relayAbort();
+  } else {
+    abortSignal?.addEventListener("abort", relayAbort, { once: true });
+  }
   let timeoutId: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
@@ -84,6 +103,7 @@ export async function executeJobCoreWithTimeout(
       }),
     ]);
   } finally {
+    abortSignal?.removeEventListener("abort", relayAbort);
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
@@ -613,26 +633,33 @@ export async function onTimer(state: CronServiceState) {
         job.state.runningAtMs = now;
         job.state.lastError = undefined;
       }
+      const runAbortControllers = new Map<string, AbortController>();
+      for (const job of due) {
+        runAbortControllers.set(job.id, createActiveRunController(state, job.id, now));
+      }
       await persist(state);
 
       return due.map((j) => ({
         id: j.id,
         job: j,
+        runAbortController:
+          runAbortControllers.get(j.id) ?? createActiveRunController(state, j.id, now),
       }));
     });
 
     const runDueJob = async (params: {
       id: string;
       job: CronJob;
+      runAbortController: AbortController;
     }): Promise<TimedCronRunOutcome> => {
-      const { id, job } = params;
+      const { id, job, runAbortController } = params;
       const startedAt = state.deps.nowMs();
       job.state.runningAtMs = startedAt;
       emit(state, { jobId: job.id, action: "started", runAtMs: startedAt });
       const jobTimeoutMs = resolveCronJobTimeoutMs(job);
 
       try {
-        const result = await executeJobCoreWithTimeout(state, job);
+        const result = await executeJobCoreWithTimeout(state, job, runAbortController.signal);
         return { jobId: id, ...result, startedAt, endedAt: state.deps.nowMs() };
       } catch (err) {
         const errorText = isAbortError(err) ? timeoutErrorMessage() : String(err);
@@ -647,6 +674,8 @@ export async function onTimer(state: CronServiceState) {
           startedAt,
           endedAt: state.deps.nowMs(),
         };
+      } finally {
+        clearActiveRun(state, id, runAbortController);
       }
     };
 
@@ -901,10 +930,19 @@ async function planStartupCatchup(
       job.state.runningAtMs = now;
       job.state.lastError = undefined;
     }
+    const runAbortControllers = new Map<string, AbortController>();
+    for (const job of startupCandidates) {
+      runAbortControllers.set(job.id, createActiveRunController(state, job.id, now));
+    }
     await persist(state);
 
     return {
-      candidates: startupCandidates.map((job) => ({ jobId: job.id, job })),
+      candidates: startupCandidates.map((job) => ({
+        jobId: job.id,
+        job,
+        runAbortController:
+          runAbortControllers.get(job.id) ?? createActiveRunController(state, job.id, now),
+      })),
       deferredJobIds: deferred.map((job) => job.id),
     };
   });
@@ -928,7 +966,11 @@ async function runStartupCatchupCandidate(
   const startedAt = state.deps.nowMs();
   emit(state, { jobId: candidate.job.id, action: "started", runAtMs: startedAt });
   try {
-    const result = await executeJobCoreWithTimeout(state, candidate.job);
+    const result = await executeJobCoreWithTimeout(
+      state,
+      candidate.job,
+      candidate.runAbortController.signal,
+    );
     return {
       jobId: candidate.jobId,
       status: result.status,
@@ -951,6 +993,8 @@ async function runStartupCatchupCandidate(
       startedAt,
       endedAt: state.deps.nowMs(),
     };
+  } finally {
+    clearActiveRun(state, candidate.jobId, candidate.runAbortController);
   }
 }
 
@@ -1009,10 +1053,16 @@ export async function executeJobCore(
 ): Promise<
   CronRunOutcome & CronRunTelemetry & { delivered?: boolean; deliveryAttempted?: boolean }
 > {
-  const resolveAbortError = () => ({
-    status: "error" as const,
-    error: timeoutErrorMessage(),
-  });
+  const resolveAbortError = () => {
+    const reason =
+      typeof abortSignal?.reason === "string" && abortSignal.reason.trim()
+        ? abortSignal.reason
+        : timeoutErrorMessage();
+    return {
+      status: "error" as const,
+      error: reason,
+    };
+  };
   const waitWithAbort = async (ms: number) => {
     if (!abortSignal) {
       await new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -1137,7 +1187,7 @@ export async function executeJobCore(
   });
 
   if (abortSignal?.aborted) {
-    return { status: "error", error: timeoutErrorMessage() };
+    return resolveAbortError();
   }
 
   return {

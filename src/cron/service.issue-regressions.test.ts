@@ -23,7 +23,7 @@ import {
   createRunningCronServiceState,
 } from "./service.test-harness.js";
 import { computeJobNextRunAtMs } from "./service/jobs.js";
-import { enqueueRun, run } from "./service/ops.js";
+import { enqueueRun, remove as removeCronJob, run } from "./service/ops.js";
 import { createCronServiceState, type CronEvent } from "./service/state.js";
 import {
   DEFAULT_JOB_TIMEOUT_MS,
@@ -1210,6 +1210,121 @@ describe("Cron issue regressions", () => {
     expect(updated?.state.lastStatus).toBe("error");
     expect(updated?.state.lastError).toContain("timed out");
     expect(updated?.state.runningAtMs).toBeUndefined();
+
+    cron.stop();
+  });
+
+  it("aborts scheduled isolated runs when cron.remove deletes a running job", async () => {
+    vi.useRealTimers();
+    const store = makeStorePath();
+    const scheduledAt = Date.parse("2026-02-15T13:00:00.000Z");
+    const cronJob = createIsolatedRegressionJob({
+      id: "remove-running-scheduled",
+      name: "remove running scheduled",
+      scheduledAt,
+      schedule: { kind: "at", at: new Date(scheduledAt).toISOString() },
+      payload: { kind: "agentTurn", message: "work" },
+      state: { nextRunAtMs: scheduledAt },
+    });
+    await writeCronJobs(store.storePath, [cronJob]);
+
+    let now = scheduledAt;
+    const started = createDeferred<void>();
+    let observedAbortSignal: AbortSignal | undefined;
+    const state = createCronServiceState({
+      cronEnabled: true,
+      storePath: store.storePath,
+      log: noopLogger,
+      nowMs: () => now,
+      enqueueSystemEvent: vi.fn(),
+      requestHeartbeatNow: vi.fn(),
+      runIsolatedAgentJob: vi.fn(async ({ abortSignal }: { abortSignal?: AbortSignal }) => {
+        observedAbortSignal = abortSignal;
+        started.resolve();
+        await new Promise<void>((resolve) => {
+          if (!abortSignal) {
+            resolve();
+            return;
+          }
+          if (abortSignal.aborted) {
+            resolve();
+            return;
+          }
+          abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        now += 5;
+        return { status: "ok" as const, summary: "late" };
+      }),
+    });
+
+    const timerPromise = onTimer(state);
+    await started.promise;
+
+    const removed = await removeCronJob(state, cronJob.id);
+    expect(removed).toEqual({ ok: true, removed: true });
+
+    await timerPromise;
+
+    expect(observedAbortSignal?.aborted).toBe(true);
+    expect(observedAbortSignal?.reason).toBe("cron: job removed while running");
+    expect(state.store?.jobs.find((entry) => entry.id === cronJob.id)).toBeUndefined();
+  });
+
+  it("aborts manual isolated runs when a running job is disabled", async () => {
+    vi.useRealTimers();
+    const store = makeStorePath();
+    const started = createDeferred<void>();
+    let observedAbortSignal: AbortSignal | undefined;
+
+    const cron = await startCronForStore({
+      storePath: store.storePath,
+      cronEnabled: false,
+      runIsolatedAgentJob: vi.fn(async ({ abortSignal }: { abortSignal?: AbortSignal }) => {
+        observedAbortSignal = abortSignal;
+        started.resolve();
+        await new Promise<void>((resolve) => {
+          if (!abortSignal) {
+            resolve();
+            return;
+          }
+          if (abortSignal.aborted) {
+            resolve();
+            return;
+          }
+          abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { status: "ok" as const, summary: "late" };
+      }),
+    });
+
+    const job = await cron.add({
+      name: "disable running manual",
+      enabled: true,
+      schedule: { kind: "every", everyMs: 60_000, anchorMs: Date.now() },
+      sessionTarget: "isolated",
+      wakeMode: "next-heartbeat",
+      payload: { kind: "agentTurn", message: "work" },
+      delivery: { mode: "none" },
+    });
+
+    const runPromise = cron.run(job.id, "force");
+    await started.promise;
+
+    const updated = await cron.update(job.id, { enabled: false });
+    expect(updated.enabled).toBe(false);
+
+    await runPromise;
+
+    expect(observedAbortSignal?.aborted).toBe(true);
+    expect(observedAbortSignal?.reason).toBe("cron: job disabled while running");
+
+    const jobAfterDisable = (await cron.list({ includeDisabled: true })).find(
+      (entry) => entry.id === job.id,
+    );
+    expect(jobAfterDisable?.enabled).toBe(false);
+    expect(jobAfterDisable?.state.runningAtMs).toBeUndefined();
+    expect(jobAfterDisable?.state.lastStatus).toBe("error");
+    expect(jobAfterDisable?.state.lastError).toBe("cron: job disabled while running");
 
     cron.stop();
   });

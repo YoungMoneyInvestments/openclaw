@@ -118,6 +118,11 @@ export type CronServiceDepsInternal = Omit<CronServiceDeps, "nowMs"> & {
   nowMs: () => number;
 };
 
+export type CronActiveRun = {
+  controller: AbortController;
+  startedAtMs: number;
+};
+
 export type CronServiceState = {
   deps: CronServiceDepsInternal;
   store: CronStoreFile | null;
@@ -127,6 +132,7 @@ export type CronServiceState = {
   warnedDisabled: boolean;
   storeLoadedAtMs: number | null;
   storeFileMtimeMs: number | null;
+  activeRuns: Map<string, CronActiveRun>;
 };
 
 export function createCronServiceState(deps: CronServiceDeps): CronServiceState {
@@ -139,7 +145,59 @@ export function createCronServiceState(deps: CronServiceDeps): CronServiceState 
     warnedDisabled: false,
     storeLoadedAtMs: null,
     storeFileMtimeMs: null,
+    activeRuns: new Map(),
   };
+}
+
+export function createActiveRunController(
+  state: CronServiceState,
+  jobId: string,
+  startedAtMs = state.deps.nowMs(),
+): AbortController {
+  const existing = state.activeRuns.get(jobId);
+  if (existing) {
+    return existing.controller;
+  }
+  const controller = new AbortController();
+  state.activeRuns.set(jobId, { controller, startedAtMs });
+  return controller;
+}
+
+export function abortActiveRun(state: CronServiceState, jobId: string, reason: string): boolean {
+  const active = state.activeRuns.get(jobId);
+  if (!active || active.controller.signal.aborted) {
+    return false;
+  }
+  active.controller.abort(reason);
+  return true;
+}
+
+export function clearActiveRun(
+  state: CronServiceState,
+  jobId: string,
+  controller?: AbortController,
+): void {
+  const active = state.activeRuns.get(jobId);
+  if (!active) {
+    return;
+  }
+  if (controller && active.controller !== controller) {
+    return;
+  }
+  state.activeRuns.delete(jobId);
+}
+
+export function abortAllActiveRuns(state: CronServiceState, reason: string): number {
+  let count = 0;
+  for (const [jobId, active] of state.activeRuns.entries()) {
+    if (active.controller.signal.aborted) {
+      continue;
+    }
+    active.controller.abort(reason);
+    count += 1;
+    state.activeRuns.delete(jobId);
+  }
+  return count;
 }
 
 export type CronRunMode = "due" | "force";

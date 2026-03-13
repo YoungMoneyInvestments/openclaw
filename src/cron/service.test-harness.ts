@@ -222,6 +222,7 @@ export function createMockCronStateForJobs(params: {
     storeFileMtimeMs: null,
     op: Promise.resolve(),
     warnedDisabled: false,
+    activeRuns: new Map(),
     deps: {
       storePath: "/mock/path",
       cronEnabled: true,

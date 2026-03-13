@@ -13,7 +13,13 @@ import {
   recomputeNextRunsForMaintenance,
 } from "./jobs.js";
 import { locked } from "./locked.js";
-import type { CronServiceState } from "./state.js";
+import {
+  abortActiveRun,
+  abortAllActiveRuns,
+  clearActiveRun,
+  createActiveRunController,
+  type CronServiceState,
+} from "./state.js";
 import { ensureLoaded, persist, warnIfDisabled } from "./store.js";
 import {
   applyJobResult,
@@ -132,6 +138,7 @@ export async function start(state: CronServiceState) {
 
 export function stop(state: CronServiceState) {
   stopTimer(state);
+  abortAllActiveRuns(state, "cron: service stopped");
 }
 
 export async function status(state: CronServiceState) {
@@ -301,6 +308,7 @@ export async function update(state: CronServiceState, id: string, patch: CronJob
       } else {
         job.state.nextRunAtMs = undefined;
         job.state.runningAtMs = undefined;
+        abortActiveRun(state, id, "cron: job disabled while running");
       }
     } else if (job.enabled) {
       // Non-schedule edits should not mutate other jobs, but still repair a
@@ -330,6 +338,7 @@ export async function remove(state: CronServiceState, id: string) {
     if (!state.store) {
       return { ok: false, removed: false } as const;
     }
+    abortActiveRun(state, id, "cron: job removed while running");
     state.store.jobs = state.store.jobs.filter((j) => j.id !== id);
     const removed = (state.store.jobs.length ?? 0) !== before;
     await persist(state);
@@ -353,6 +362,7 @@ type PreparedManualRun =
       jobId: string;
       startedAt: number;
       executionJob: CronJob;
+      runAbortController: AbortController;
     }
   | { ok: false };
 
@@ -413,6 +423,7 @@ async function prepareManualRun(
     // (`list`, `status`) stay responsive while the run is in progress.
     job.state.runningAtMs = now;
     job.state.lastError = undefined;
+    const runAbortController = createActiveRunController(state, job.id, now);
     // Persist the running marker before releasing lock so timer ticks that
     // force-reload from disk cannot start the same job concurrently.
     await persist(state);
@@ -424,6 +435,7 @@ async function prepareManualRun(
       jobId: job.id,
       startedAt: now,
       executionJob,
+      runAbortController,
     } as const;
   });
 }
@@ -436,12 +448,15 @@ async function finishPreparedManualRun(
   const executionJob = prepared.executionJob;
   const startedAt = prepared.startedAt;
   const jobId = prepared.jobId;
+  const runAbortController = prepared.runAbortController;
 
   let coreResult: Awaited<ReturnType<typeof executeJobCoreWithTimeout>>;
   try {
-    coreResult = await executeJobCoreWithTimeout(state, executionJob);
+    coreResult = await executeJobCoreWithTimeout(state, executionJob, runAbortController.signal);
   } catch (err) {
     coreResult = { status: "error", error: String(err) };
+  } finally {
+    clearActiveRun(state, jobId, runAbortController);
   }
   const endedAt = state.deps.nowMs();
 
