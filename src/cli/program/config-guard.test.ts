@@ -87,6 +87,31 @@ describe("ensureConfigReady", () => {
       expectedDoctorCalls: 0,
     },
     {
+      name: "skips doctor flow for gateway status",
+      commandPath: ["gateway", "status"],
+      expectedDoctorCalls: 0,
+    },
+    {
+      name: "skips doctor flow for gateway probe",
+      commandPath: ["gateway", "probe"],
+      expectedDoctorCalls: 0,
+    },
+    {
+      name: "skips doctor flow for gateway health",
+      commandPath: ["gateway", "health"],
+      expectedDoctorCalls: 0,
+    },
+    {
+      name: "skips doctor flow for gateway discover",
+      commandPath: ["gateway", "discover"],
+      expectedDoctorCalls: 0,
+    },
+    {
+      name: "skips doctor flow for gateway call",
+      commandPath: ["gateway", "call"],
+      expectedDoctorCalls: 0,
+    },
+    {
       name: "runs doctor flow for commands that may mutate state",
       commandPath: ["message"],
       expectedDoctorCalls: 1,

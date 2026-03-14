@@ -384,6 +384,11 @@ describe("argv helpers", () => {
       ["node", "openclaw", "status"],
       ["node", "openclaw", "health"],
       ["node", "openclaw", "sessions"],
+      ["node", "openclaw", "gateway", "status", "--json"],
+      ["node", "openclaw", "gateway", "probe", "--json"],
+      ["node", "openclaw", "gateway", "health", "--json"],
+      ["node", "openclaw", "gateway", "discover", "--json"],
+      ["node", "openclaw", "gateway", "call", "status", "--json"],
       ["node", "openclaw", "config", "get", "update"],
       ["node", "openclaw", "config", "unset", "update"],
       ["node", "openclaw", "models", "list"],
@@ -406,6 +411,11 @@ describe("argv helpers", () => {
 
   it.each([
     { path: ["status"], expected: false },
+    { path: ["gateway", "status"], expected: false },
+    { path: ["gateway", "probe"], expected: false },
+    { path: ["gateway", "health"], expected: false },
+    { path: ["gateway", "discover"], expected: false },
+    { path: ["gateway", "call"], expected: false },
     { path: ["config", "get"], expected: false },
     { path: ["models", "status"], expected: false },
     { path: ["agents", "list"], expected: true },

@@ -110,7 +110,20 @@ function getCommandPathFromArgv(argv: string[]): string[] {
 
 function shouldSkipEagerContextWindowWarmup(argv: string[] = process.argv): boolean {
   const [primary, secondary] = getCommandPathFromArgv(argv);
-  return primary === "config" && secondary === "validate";
+  if (primary === "config" && secondary === "validate") {
+    return true;
+  }
+  if (primary === "status" || primary === "health" || primary === "sessions") {
+    return true;
+  }
+  return (
+    primary === "gateway" &&
+    (secondary === "status" ||
+      secondary === "probe" ||
+      secondary === "health" ||
+      secondary === "discover" ||
+      secondary === "call")
+  );
 }
 
 function primeConfiguredContextWindows(): OpenClawConfig | undefined {

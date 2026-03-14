@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-function mockContextModuleDeps(loadConfigImpl: () => unknown) {
+function mockContextModuleDeps(
+  loadConfigImpl: () => unknown,
+  ensureModelsJsonImpl: () => Promise<void> = vi.fn(async () => {}),
+) {
   vi.doMock("../config/config.js", () => ({
     loadConfig: loadConfigImpl,
   }));
   vi.doMock("./models-config.js", () => ({
-    ensureOpenClawModelsJson: vi.fn(async () => {}),
+    ensureOpenClawModelsJson: ensureModelsJsonImpl,
   }));
   vi.doMock("./agent-paths.js", () => ({
     resolveOpenClawAgentDir: () => "/tmp/openclaw-agent",
@@ -71,6 +74,34 @@ describe("lookupContextTokens", () => {
       process.argv = argvSnapshot;
     }
   });
+
+  it.each([
+    { commandPath: ["status"] },
+    { commandPath: ["health"] },
+    { commandPath: ["sessions"] },
+    { commandPath: ["gateway", "status"] },
+    { commandPath: ["gateway", "probe"] },
+    { commandPath: ["gateway", "health"] },
+    { commandPath: ["gateway", "discover"] },
+    { commandPath: ["gateway", "call"] },
+  ])(
+    "skips eager warmup for read-only inspection command $commandPath",
+    async ({ commandPath }) => {
+      const loadConfigMock = vi.fn(() => ({ models: {} }));
+      const ensureModelsJsonMock = vi.fn(async () => {});
+      mockContextModuleDeps(loadConfigMock, ensureModelsJsonMock);
+
+      const argvSnapshot = process.argv;
+      process.argv = ["node", "openclaw", ...commandPath];
+      try {
+        await import("./context.js");
+        expect(loadConfigMock).not.toHaveBeenCalled();
+        expect(ensureModelsJsonMock).not.toHaveBeenCalled();
+      } finally {
+        process.argv = argvSnapshot;
+      }
+    },
+  );
 
   it("retries config loading after backoff when an initial load fails", async () => {
     vi.useFakeTimers();
