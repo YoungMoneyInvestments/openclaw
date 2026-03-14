@@ -135,6 +135,39 @@ describe("loadGatewayPlugins", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
+  test("logs plugin warnings as warnings instead of info", async () => {
+    const { loadGatewayPlugins } = await importServerPluginsModule();
+    const diagnostics: PluginDiagnostic[] = [
+      {
+        level: "warn",
+        pluginId: "openrouter-tagger",
+        source: "/tmp/plugin",
+        message: "async registration is ignored",
+      },
+    ];
+    loadOpenClawPlugins.mockReturnValue(createRegistry(diagnostics));
+
+    const log = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
+
+    loadGatewayPlugins({
+      cfg: {},
+      workspaceDir: "/tmp",
+      log,
+      coreGatewayHandlers: {},
+      baseMethods: [],
+    });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      "[plugins] async registration is ignored (plugin=openrouter-tagger, source=/tmp/plugin)",
+    );
+    expect(log.info).not.toHaveBeenCalled();
+  });
+
   test("provides subagent runtime with sessions.get method aliases", async () => {
     const { loadGatewayPlugins } = await importServerPluginsModule();
     loadOpenClawPlugins.mockReturnValue(createRegistry([]));

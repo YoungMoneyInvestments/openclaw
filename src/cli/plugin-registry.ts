@@ -2,8 +2,8 @@ import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent
 import { loadConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
+import { createPluginLoaderLogger } from "../plugins/logger.js";
 import { getActivePluginRegistry } from "../plugins/runtime.js";
-import type { PluginLogger } from "../plugins/types.js";
 
 const log = createSubsystemLogger("plugins");
 let pluginRegistryLoaded = false;
@@ -24,16 +24,14 @@ export function ensurePluginRegistryLoaded(): void {
   }
   const config = loadConfig();
   const workspaceDir = resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
-  const logger: PluginLogger = {
-    info: (msg) => log.info(msg),
-    warn: (msg) => log.warn(msg),
-    error: (msg) => log.error(msg),
-    debug: (msg) => log.debug(msg),
-  };
   loadOpenClawPlugins({
     config,
     workspaceDir,
-    logger,
+    logger: createPluginLoaderLogger(log, {
+      infoLevel: "debug",
+      dedupeScope: "cli-startup",
+      dedupeWarnings: true,
+    }),
   });
   pluginRegistryLoaded = true;
 }

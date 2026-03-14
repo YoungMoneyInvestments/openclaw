@@ -40,6 +40,10 @@ describe("createGatewayCloseHandler", () => {
       closeIdleConnections: vi.fn(),
       closeAllConnections: vi.fn(),
     };
+    const log = {
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
     const tickInterval = setInterval(() => {}, 60_000);
     const healthInterval = setInterval(() => {}, 60_000);
     const dedupeCleanup = setInterval(() => {}, 60_000);
@@ -68,6 +72,7 @@ describe("createGatewayCloseHandler", () => {
       browserControl: null,
       wss: wss as never,
       httpServer: httpServer as never,
+      log: log as never,
     });
 
     const closePromise = close({ reason: "gateway restarting", restartExpectedMs: 1500 });
@@ -79,12 +84,21 @@ describe("createGatewayCloseHandler", () => {
     expect(httpServer.closeAllConnections).toHaveBeenCalledTimes(1);
     expect(preauthSocket.close).toHaveBeenCalledWith(1012, "service restart");
     expect(trackedSocket.close).toHaveBeenCalledWith(1012, "service restart");
+    expect(log.info).toHaveBeenCalledWith(
+      "shutdown: starting (gateway restarting; restartExpectedMs=1500)",
+    );
+    await vi.waitFor(() => {
+      expect(log.info).toHaveBeenCalledWith("shutdown: listeners quiesced");
+    });
     await vi.waitFor(() => {
       expect(stopChannel).toHaveBeenCalledWith("telegram");
     });
 
     releaseStopChannel?.();
     await closePromise;
+    await vi.waitFor(() => {
+      expect(log.info).toHaveBeenCalledWith("shutdown: cleanup complete");
+    });
   });
 
   it("times out a stuck shutdown step and still resolves close", async () => {

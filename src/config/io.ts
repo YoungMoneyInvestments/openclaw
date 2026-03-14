@@ -5,6 +5,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import JSON5 from "json5";
 import { ensureOwnerDisplaySecret } from "../agents/owner-display.js";
+import { isVerbose } from "../globals.js";
 import { loadDotEnv } from "../infra/dotenv.js";
 import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import {
@@ -85,6 +86,7 @@ const OPEN_DM_POLICY_ALLOW_FROM_RE =
 
 const CONFIG_AUDIT_LOG_FILENAME = "config-audit.jsonl";
 const loggedInvalidConfigs = new Set<string>();
+const loggedConfigWarnings = new Set<string>();
 
 type ConfigWriteAuditResult = "rename" | "copy-fallback" | "failed";
 
@@ -586,7 +588,7 @@ export type ConfigIoDeps = {
   env?: NodeJS.ProcessEnv;
   homedir?: () => string;
   configPath?: string;
-  logger?: Pick<typeof console, "error" | "warn">;
+  logger?: Pick<typeof console, "error" | "warn" | "debug">;
 };
 
 function warnOnConfigMiskeys(raw: unknown, logger: Pick<typeof console, "warn">): void {
@@ -731,6 +733,37 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
   const configPath =
     candidatePaths.find((candidate) => deps.fs.existsSync(candidate)) ?? requestedConfigPath;
 
+  function logConfigWarningsOnce(
+    warnings: Array<{ path?: string; message: string }>,
+    opts?: { phase?: "read" | "write" },
+  ): void {
+    if (warnings.length === 0) {
+      return;
+    }
+    const details = warnings
+      .map(
+        (warning) =>
+          `- ${sanitizeTerminalText(warning.path || "<root>")}: ${sanitizeTerminalText(warning.message)}`,
+      )
+      .join("\n");
+    const dedupeKey = `${opts?.phase ?? "read"}:${configPath}:${details}`;
+    if (loggedConfigWarnings.has(dedupeKey)) {
+      return;
+    }
+    loggedConfigWarnings.add(dedupeKey);
+    const first = warnings[0];
+    const extraCount = warnings.length - 1;
+    const phaseLabel = opts?.phase === "write" ? " while writing" : "";
+    const summary =
+      `Config warning${warnings.length === 1 ? "" : "s"}${phaseLabel} at ${configPath}: ` +
+      `${sanitizeTerminalText(first?.path || "<root>")}: ${sanitizeTerminalText(first?.message ?? "warning")}` +
+      (extraCount > 0 ? ` (+${extraCount} more; use --verbose for details)` : "");
+    deps.logger.warn(summary);
+    if (isVerbose()) {
+      deps.logger.warn(`Config warnings at ${configPath}:\n${details}`);
+    }
+  }
+
   function loadConfig(): OpenClawConfig {
     try {
       maybeLoadDotEnvForConfig(deps.env);
@@ -786,15 +819,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         (error as { code?: string; details?: string }).details = details;
         throw error;
       }
-      if (validated.warnings.length > 0) {
-        const details = validated.warnings
-          .map(
-            (iss) =>
-              `- ${sanitizeTerminalText(iss.path || "<root>")}: ${sanitizeTerminalText(iss.message)}`,
-          )
-          .join("\n");
-        deps.logger.warn(`Config warnings:\\n${details}`);
-      }
+      logConfigWarningsOnce(validated.warnings, { phase: "read" });
       warnIfConfigFromFuture(validated.config, deps.logger);
       const cfg = applyTalkConfigNormalization(
         applyModelDefaults(
@@ -1123,12 +1148,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       const issueMessage = issue?.message ?? "invalid";
       throw new Error(formatConfigValidationFailure(pathLabel, issueMessage));
     }
-    if (validated.warnings.length > 0) {
-      const details = validated.warnings
-        .map((warning) => `- ${warning.path}: ${warning.message}`)
-        .join("\n");
-      deps.logger.warn(`Config warnings:\n${details}`);
-    }
+    logConfigWarningsOnce(validated.warnings, { phase: "write" });
 
     // Restore ${VAR} env var references that were resolved during config loading.
     // Read the current file (pre-substitution) and restore any references whose

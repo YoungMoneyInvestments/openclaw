@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { loadConfig } from "../config/config.js";
 import { loadOpenClawPlugins } from "../plugins/loader.js";
+import { createPluginLoaderLogger } from "../plugins/logger.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "./protocol/client-info.js";
@@ -176,12 +177,11 @@ export function loadGatewayPlugins(params: {
   const pluginRegistry = loadOpenClawPlugins({
     config: params.cfg,
     workspaceDir: params.workspaceDir,
-    logger: {
-      info: (msg) => params.log.info(msg),
-      warn: (msg) => params.log.warn(msg),
-      error: (msg) => params.log.error(msg),
-      debug: (msg) => params.log.debug(msg),
-    },
+    logger: createPluginLoaderLogger(params.log, {
+      infoLevel: "debug",
+      dedupeScope: "gateway-startup",
+      dedupeWarnings: true,
+    }),
     coreGatewayHandlers: params.coreGatewayHandlers,
     runtimeOptions: {
       subagent: createGatewaySubagentRuntime(),
@@ -203,7 +203,7 @@ export function loadGatewayPlugins(params: {
       if (diag.level === "error") {
         params.log.error(message);
       } else {
-        params.log.info(message);
+        params.log.warn(message);
       }
     }
   }

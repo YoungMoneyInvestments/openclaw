@@ -121,6 +121,11 @@ export function createGatewayCloseHandler(params: {
       typeof opts?.restartExpectedMs === "number" && Number.isFinite(opts.restartExpectedMs)
         ? Math.max(0, Math.floor(opts.restartExpectedMs))
         : null;
+    params.log?.info?.(
+      restartExpectedMs == null
+        ? `shutdown: starting (${reason})`
+        : `shutdown: starting (${reason}; restartExpectedMs=${restartExpectedMs})`,
+    );
     params.broadcast("shutdown", {
       reason,
       restartExpectedMs,
@@ -131,6 +136,7 @@ export function createGatewayCloseHandler(params: {
       httpServer: params.httpServer,
       httpServers: params.httpServers,
     });
+    params.log?.info?.("shutdown: listeners quiesced");
     if (params.bonjourStop) {
       await runShutdownStep("bonjour stop", params.bonjourStop, params.log);
     }
@@ -204,5 +210,6 @@ export function createGatewayCloseHandler(params: {
         params.log,
       );
     }
+    params.log?.info?.("shutdown: cleanup complete");
   };
 }
