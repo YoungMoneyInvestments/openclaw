@@ -1,5 +1,5 @@
 ---
-summary: "Research notes: offline memory system for Clawd workspaces (Markdown source-of-truth + derived index)"
+summary: "Research notes: offline memory system for OpenClaw workspaces (Markdown source-of-truth + derived index)"
 read_when:
   - Designing workspace memory (~/.openclaw/workspace) beyond daily Markdown logs
   - Deciding: standalone CLI vs deep OpenClaw integration
@@ -9,7 +9,7 @@ title: "Workspace Memory Research"
 
 # Workspace Memory v2 (offline): research notes
 
-Target: Clawd-style workspace (`agents.defaults.workspace`, default `~/.openclaw/workspace`) where “memory” is stored as one Markdown file per day (`memory/YYYY-MM-DD.md`) plus a small set of stable files (e.g. `memory.md`, `SOUL.md`).
+Target: OpenClaw-style workspace (`agents.defaults.workspace`, default `~/.openclaw/workspace`) where “memory” is stored as one Markdown file per day (`memory/YYYY-MM-DD.md`) plus a small set of stable files (e.g. `memory.md`, `SOUL.md`).
 
 This doc proposes an **offline-first** memory architecture that keeps Markdown as the canonical, reviewable source of truth, but adds **structured recall** (search, entity summaries, confidence updates) via a derived index.
 
@@ -82,7 +82,7 @@ Notes:
 
 - **Daily log stays daily log**. No need to turn it into JSON.
 - The `bank/` files are **curated**, produced by reflection jobs, and can still be edited by hand.
-- `memory.md` remains “small + core-ish”: the things you want Clawd to see every session.
+- `memory.md` remains “small + core-ish”: the things you want OpenClaw to see every session.
 
 ### Derived store (machine recall)
 

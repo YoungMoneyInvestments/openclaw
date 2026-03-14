@@ -115,7 +115,7 @@ describe("talk.voiceAliases", () => {
     const res = validateConfigObject({
       talk: {
         voiceAliases: {
-          Clawd: "EXAVITQu4vr4xnSDxMaL",
+          OpenClaw: "EXAVITQu4vr4xnSDxMaL",
           Roger: "CwhRBWXzGAHq8TQ4Fs17",
         },
       },
@@ -127,7 +127,7 @@ describe("talk.voiceAliases", () => {
     const res = validateConfigObject({
       talk: {
         voiceAliases: {
-          Clawd: 123,
+          OpenClaw: 123,
         },
       },
     });

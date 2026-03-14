@@ -254,4 +254,4 @@ git pull
 
 - Run `openclaw doctor` again and read the output carefully (it often tells you the fix).
 - Check: [Troubleshooting](/gateway/troubleshooting)
-- Ask in Discord: [https://discord.gg/clawd](https://discord.gg/clawd)
+- Ask in the Discord community: [Discord invite](https://discord.gg/clawd)

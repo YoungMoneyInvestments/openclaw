@@ -10,8 +10,8 @@ class TalkModeVoiceResolverTest {
   fun resolvesVoiceAliasCaseInsensitively() {
     val resolved =
       TalkModeVoiceResolver.resolveVoiceAlias(
-        " Clawd ",
-        mapOf("clawd" to "voice-123"),
+        " OpenClaw ",
+        mapOf("openclaw" to "voice-123"),
       )
 
     assertEquals("voice-123", resolved)

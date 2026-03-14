@@ -210,7 +210,7 @@ describe("web monitor inbox", () => {
             ephemeralMessage: {
               message: {
                 extendedTextMessage: {
-                  text: "oh hey @Clawd UK !",
+                  text: "oh hey @OpenClaw UK !",
                   contextInfo: { mentionedJid: ["123@s.whatsapp.net"] },
                 },
               },
@@ -222,7 +222,7 @@ describe("web monitor inbox", () => {
     expectSingleGroupMessage(onMessage, {
       chatType: "group",
       conversationId: "424242@g.us",
-      body: "oh hey @Clawd UK !",
+      body: "oh hey @OpenClaw UK !",
       mentionedJids: ["123@s.whatsapp.net"],
       senderE164: "+888",
     });
