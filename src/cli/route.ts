@@ -1,4 +1,5 @@
 import { isTruthyEnvValue } from "../infra/env.js";
+import { enableConsoleCapture, routeLogsToStderr } from "../logging.js";
 import { defaultRuntime } from "../runtime.js";
 import { VERSION } from "../version.js";
 import { getCommandPathWithRootOptions, hasFlag, hasHelpOrVersion } from "./argv.js";
@@ -13,6 +14,10 @@ async function prepareRoutedCommand(params: {
   loadPlugins?: boolean | ((argv: string[]) => boolean);
 }) {
   const suppressDoctorStdout = hasFlag(params.argv, "--json");
+  if (suppressDoctorStdout) {
+    enableConsoleCapture();
+    routeLogsToStderr();
+  }
   emitCliBanner(VERSION, { argv: params.argv });
   await ensureConfigReady({
     runtime: defaultRuntime,

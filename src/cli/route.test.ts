@@ -5,6 +5,8 @@ const ensureConfigReadyMock = vi.hoisted(() => vi.fn(async () => {}));
 const ensurePluginRegistryLoadedMock = vi.hoisted(() => vi.fn());
 const findRoutedCommandMock = vi.hoisted(() => vi.fn());
 const runRouteMock = vi.hoisted(() => vi.fn(async () => true));
+const enableConsoleCaptureMock = vi.hoisted(() => vi.fn());
+const routeLogsToStderrMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./banner.js", () => ({
   emitCliBanner: emitCliBannerMock,
@@ -16,6 +18,11 @@ vi.mock("./program/config-guard.js", () => ({
 
 vi.mock("./plugin-registry.js", () => ({
   ensurePluginRegistryLoaded: ensurePluginRegistryLoadedMock,
+}));
+
+vi.mock("../logging.js", () => ({
+  enableConsoleCapture: enableConsoleCaptureMock,
+  routeLogsToStderr: routeLogsToStderrMock,
 }));
 
 vi.mock("./program/routes.js", () => ({
@@ -59,6 +66,8 @@ describe("tryRouteCli", () => {
         suppressDoctorStdout: true,
       }),
     );
+    expect(enableConsoleCaptureMock).toHaveBeenCalledTimes(1);
+    expect(routeLogsToStderrMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not pass suppressDoctorStdout for routed non-json commands", async () => {
@@ -68,6 +77,8 @@ describe("tryRouteCli", () => {
       runtime: expect.any(Object),
       commandPath: ["status"],
     });
+    expect(enableConsoleCaptureMock).not.toHaveBeenCalled();
+    expect(routeLogsToStderrMock).not.toHaveBeenCalled();
   });
 
   it("routes status when root options precede the command", async () => {

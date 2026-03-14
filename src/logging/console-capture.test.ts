@@ -109,6 +109,18 @@ describe("enableConsoleCapture", () => {
     expect(log).toHaveBeenCalledWith(payload);
   });
 
+  it("keeps JSON payloads on stdout in RPC/JSON mode", () => {
+    setLoggerOverride({ level: "info", file: tempLogPath() });
+    const stdoutWrite = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderrWrite = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    routeLogsToStderr();
+    enableConsoleCapture();
+    const payload = JSON.stringify({ ok: true });
+    console.log(payload);
+    expect(stdoutWrite).toHaveBeenCalledWith(`${payload}\n`);
+    expect(stderrWrite).not.toHaveBeenCalled();
+  });
+
   it.each([
     { name: "stdout", stream: process.stdout },
     { name: "stderr", stream: process.stderr },

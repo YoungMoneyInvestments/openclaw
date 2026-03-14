@@ -283,10 +283,12 @@ export function enableConsoleCapture(): void {
         // never block console output on logging failures
       }
       if (loggingState.forceConsoleToStderr) {
-        // in RPC/JSON mode, keep stdout clean
+        // In RPC/JSON mode, keep diagnostic chatter off stdout while still
+        // allowing machine-readable JSON payloads to remain script-friendly.
         try {
           const line = timestamp ? `${timestamp} ${formatted}` : formatted;
-          process.stderr.write(`${line}\n`);
+          const stream = isJsonPayload(trimmed) ? process.stdout : process.stderr;
+          stream.write(`${line}\n`);
         } catch (err) {
           if (isEpipeError(err)) {
             return;
