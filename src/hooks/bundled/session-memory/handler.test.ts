@@ -352,6 +352,55 @@ describe("session-memory hook", () => {
     expect(memoryContent).toContain("user: Normal message");
   });
 
+  it("filters out assistant planner/meta messages while keeping user intent and outcomes", async () => {
+    const sessionContent = createMockSessionContent([
+      { role: "user", content: "Stop checking BrokerBridge unless I ask for it again." },
+      {
+        role: "assistant",
+        content: "The user wants me to check BrokerBridge status and inspect the cron jobs.",
+      },
+      {
+        role: "assistant",
+        content: "Let me execute the health-check script and inspect the latest logs.",
+      },
+      {
+        role: "assistant",
+        content: "I'll run the BrokerBridge check and summarize what I find.",
+      },
+      {
+        role: "assistant",
+        content: "BrokerBridge checks were disabled and the stale cron jobs were removed.",
+      },
+    ]);
+    const { memoryContent } = await runNewWithPreviousSession({ sessionContent });
+
+    expect(memoryContent).toContain("user: Stop checking BrokerBridge unless I ask for it again.");
+    expect(memoryContent).toContain(
+      "assistant: BrokerBridge checks were disabled and the stale cron jobs were removed.",
+    );
+    expect(memoryContent).not.toContain("The user wants me to check BrokerBridge status");
+    expect(memoryContent).not.toContain("Let me execute the health-check script");
+    expect(memoryContent).not.toContain("I'll run the BrokerBridge check");
+  });
+
+  it("preserves user-facing assistant replies that use first-person phrasing", async () => {
+    const sessionContent = createMockSessionContent([
+      { role: "user", content: "How does session memory work now?" },
+      { role: "assistant", content: "Let me explain how this works." },
+      {
+        role: "assistant",
+        content:
+          "I'll fix that behavior if it shows up again, but the cron jobs are already disabled.",
+      },
+    ]);
+    const { memoryContent } = await runNewWithPreviousSession({ sessionContent });
+
+    expect(memoryContent).toContain("assistant: Let me explain how this works.");
+    expect(memoryContent).toContain(
+      "assistant: I'll fix that behavior if it shows up again, but the cron jobs are already disabled.",
+    );
+  });
+
   it("respects custom messages config (limits to N messages)", async () => {
     // Create 10 messages
     const entries = [];

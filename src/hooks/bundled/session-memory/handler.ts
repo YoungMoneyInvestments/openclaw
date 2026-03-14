@@ -47,6 +47,26 @@ function resolveDisplaySessionKey(params: {
   });
 }
 
+const assistantPlannerMetaPatterns = [
+  /^\s*the user wants me to\b/i,
+  /^\s*(?:let me|i(?:'ll| will)|i am going to)\s+(?:run|execute|inspect|open|read|search|create|write|edit|review|debug|pull|fetch|scan)\b.*\b(?:check|command|config|cron|file|files|health-check|job|jobs|logs?|memory|repo|repository|script|session|tool|tools|transcript|workspace)\b/i,
+  /^\s*(?:let me|i(?:'ll| will)|i am going to)\s+check\b.*\b(?:status|cron|job|jobs|logs?|workspace|config|file|files|repo|repository|session|memory|script|system|tool|tools|transcript)\b/i,
+  /^\s*(?:checking|inspecting|opening|reading|searching|creating|writing|editing)\b.*\b(?:workspace|config|logs?|script|file|repo|repository|session|memory|cron|job|tool)\b/i,
+] as const;
+
+function shouldSkipSessionMemoryMessage(role: string, text: string): boolean {
+  if (text.startsWith("/")) {
+    return true;
+  }
+
+  if (role !== "assistant") {
+    return false;
+  }
+
+  const normalizedText = text.trim();
+  return assistantPlannerMetaPatterns.some((pattern) => pattern.test(normalizedText));
+}
+
 /**
  * Read recent messages from session file for slug generation
  */
@@ -76,7 +96,7 @@ async function getRecentSessionContent(
               ? // oxlint-disable-next-line typescript/no-explicit-any
                 msg.content.find((c: any) => c.type === "text")?.text
               : msg.content;
-            if (text && !text.startsWith("/")) {
+            if (text && !shouldSkipSessionMemoryMessage(role, text)) {
               allMessages.push(`${role}: ${text}`);
             }
           }
