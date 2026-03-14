@@ -1042,6 +1042,7 @@ export async function startGatewayServer(
     wss,
     httpServer,
     httpServers,
+    log,
   });
 
   return {
